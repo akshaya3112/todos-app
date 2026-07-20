@@ -1,0 +1,3 @@
+.aws-sam/
+.git/
+node_modules/

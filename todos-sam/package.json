@@ -1,0 +1,10 @@
+{
+  "name": "todos-sam",
+  "version": "1.0.0",
+  "description": "Serverless TODOs backend with JWT Lambda authorizer",
+  "dependencies": {
+    "aws-sdk": "^2.1600.0",
+    "jsonwebtoken": "^9.0.2",
+    "uuid": "^9.0.1"
+  }
+}

@@ -1,0 +1,223 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  Serverless TODOs backend - Lambda + API Gateway (HTTP API) + DynamoDB + JWT Lambda Authorizer
+
+Globals:
+  Function:
+    Runtime: nodejs18.x
+    Timeout: 5
+    MemorySize: 128
+    Environment:
+      Variables:
+        TODOS_TABLE: !Ref TodosTable
+        USERS_TABLE: !Ref UsersTable
+        JWT_SECRET: "supersecretkey123"
+
+Resources:
+
+  TodosTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: todos-app-table
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+
+  UsersTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: todos-users-table
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: username
+          AttributeType: S
+      KeySchema:
+        - AttributeName: username
+          KeyType: HASH
+
+  TodosHttpApi:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      CorsConfiguration:
+        AllowOrigins:
+          - "*"
+        AllowMethods:
+          - GET
+          - POST
+          - PUT
+          - DELETE
+          - OPTIONS
+        AllowHeaders:
+          - Content-Type
+          - Authorization
+      Auth:
+        Authorizers:
+          JwtLambdaAuthorizer:
+            FunctionArn: !GetAtt AuthorizerFunction.Arn
+            FunctionInvokeRole: !GetAtt AuthorizerInvocationRole.Arn
+            Identity:
+              Headers:
+                - Authorization
+            AuthorizerPayloadFormatVersion: "2.0"
+            EnableSimpleResponses: true
+
+  AuthorizerInvocationRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: apigateway.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: InvokeAuthorizer
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: lambda:InvokeFunction
+                Resource: !GetAtt AuthorizerFunction.Arn
+
+  # --- Login (public, no auth) ---
+  LoginFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: src/handlers/login.handler
+      CodeUri: .
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref UsersTable
+      Events:
+        Login:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref TodosHttpApi
+            Path: /login
+            Method: post
+
+  # --- Register (public, no auth) ---
+  RegisterFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: src/handlers/register.handler
+      CodeUri: .
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref UsersTable
+      Events:
+        Register:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref TodosHttpApi
+            Path: /register
+            Method: post
+
+  # --- Authorizer ---
+  AuthorizerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: src/handlers/authorizer.handler
+      CodeUri: .
+
+  # --- CRUD, all behind the JWT authorizer ---
+  CreateTodoFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: src/handlers/createTodo.handler
+      CodeUri: .
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref TodosTable
+      Events:
+        CreateTodo:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref TodosHttpApi
+            Path: /todos
+            Method: post
+            Auth:
+              Authorizer: JwtLambdaAuthorizer
+
+  ListTodosFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: src/handlers/listTodos.handler
+      CodeUri: .
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref TodosTable
+      Events:
+        ListTodos:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref TodosHttpApi
+            Path: /todos
+            Method: get
+            Auth:
+              Authorizer: JwtLambdaAuthorizer
+
+  GetTodoFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: src/handlers/getTodo.handler
+      CodeUri: .
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref TodosTable
+      Events:
+        GetTodo:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref TodosHttpApi
+            Path: /todos/{id}
+            Method: get
+            Auth:
+              Authorizer: JwtLambdaAuthorizer
+
+  UpdateTodoFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: src/handlers/updateTodo.handler
+      CodeUri: .
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref TodosTable
+      Events:
+        UpdateTodo:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref TodosHttpApi
+            Path: /todos/{id}
+            Method: put
+            Auth:
+              Authorizer: JwtLambdaAuthorizer
+
+  DeleteTodoFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: src/handlers/deleteTodo.handler
+      CodeUri: .
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref TodosTable
+      Events:
+        DeleteTodo:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref TodosHttpApi
+            Path: /todos/{id}
+            Method: delete
+            Auth:
+              Authorizer: JwtLambdaAuthorizer
+
+Outputs:
+  ApiUrl:
+    Description: Base URL of the deployed API
+    Value: !Sub "https://${TodosHttpApi}.execute-api.${AWS::Region}.amazonaws.com"

@@ -1,0 +1,10 @@
+# backend
+todos-sam/node_modules/
+todos-sam/.aws-sam/
+todos-sam/samconfig.toml
+
+# frontend
+todos-frontend/node_modules/
+todos-frontend/dist/
+todos-frontend/.env
+todos-frontend/.vite/
